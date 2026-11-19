@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "project": {
-    "name": "labtrack",
+    "name": "blueprint_sensorica",
     "languages": [
       "cpp",
       "c",
