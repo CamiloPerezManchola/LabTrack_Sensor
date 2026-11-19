@@ -34,19 +34,6 @@
         }
       },
       {
-        "id": "wid_z4Mp3JJ-Hxm2",
-        "type": "iot-value",
-        "x": 11,
-        "y": 0,
-        "w": 5,
-        "h": 2,
-        "props": {
-          "title": "Iluminación",
-          "unit": "lx",
-          "variable": "iluminacion"
-        }
-      },
-      {
         "id": "wid_zYPhsLLTmH6Z",
         "type": "iot-gauge",
         "x": 0,
@@ -75,20 +62,6 @@
         }
       },
       {
-        "id": "wid_Sm2kYJ41EnXS",
-        "type": "iot-gauge",
-        "x": 11,
-        "y": 2,
-        "w": 5,
-        "h": 4,
-        "props": {
-          "max": 1000,
-          "min": 0,
-          "title": "Iluminación (lx)",
-          "variable": "iluminacion"
-        }
-      },
-      {
         "id": "wid_Ov2M8Hn9cPCi",
         "type": "iot-chart",
         "x": 0,
@@ -107,15 +80,10 @@
               "color": "#3b82f6",
               "label": "Humedad (% HR)",
               "variable": "humedad"
-            },
-            {
-              "color": "#f59e0b",
-              "label": "Iluminación (lx)",
-              "variable": "iluminacion"
             }
           ],
           "title": "Histórico de Sensores (Última Hora)",
-          "window": "1h",
+          "window": "24h",
           "zoom": true
         }
       }
