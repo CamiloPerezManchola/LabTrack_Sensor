@@ -1,41 +1,34 @@
 #include "sensors.h"
 #include "config.h"
+#include <DHT.h>
 #include <math.h>
 
-static SensorReading read_scaled_channel(uint8_t pin, float min_val, float max_val) {
-    SensorReading reading{};
-    reading.raw_adc = analogRead(pin);
+static DHT dht(PIN_DHT, DHT22);
 
-    if (reading.raw_adc > ADC_RAW_MAX) {
-        reading.value = NAN;
-        reading.valid = false;
-        return reading;
-    }
-
-    reading.value = (static_cast<float>(reading.raw_adc) * (max_val - min_val) / ADC_MAX_VAL) + min_val;
-    reading.valid = !isnan(reading.value) && !isinf(reading.value) &&
-                    (reading.value >= min_val) && (reading.value <= max_val);
-    return reading;
+static SensorReading make_reading(float v, float lo, float hi) {
+    SensorReading r{};
+    r.value = v;
+    r.valid = !isnan(v) && !isinf(v) && v >= lo && v <= hi;
+    return r;
 }
 
 void sensors_init() {
-    // Configurar resolución de 12 bits (0 - 4095) y atenuación de 11 dB (escala completa hasta ~3.3V)
-    analogReadResolution(12);
-    analogSetAttenuation(ADC_11db);
-
-    // Pines de entrada analógica exclusivamente en ADC1
-    pinMode(PIN_TEMP, INPUT);
-    pinMode(PIN_HUM, INPUT);
-    pinMode(PIN_LUX, INPUT);
+    dht.begin();
 }
 
 SensorData sensors_read() {
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+
+    // Un único reintento si hubo fallo de lectura
+    if (isnan(h) || isnan(t)) {
+        delay(500);
+        h = dht.readHumidity();
+        t = dht.readTemperature();
+    }
+
     SensorData data{};
-
-    // Lectura y validación individual por canal (Regla 1 de nodrix-esp32)
-    data.temperatura = read_scaled_channel(PIN_TEMP, TEMP_MIN, TEMP_MAX);
-    data.humedad     = read_scaled_channel(PIN_HUM, HUM_MIN, HUM_MAX);
-    data.iluminacion = read_scaled_channel(PIN_LUX, LUX_MIN, LUX_MAX);
-
+    data.temperatura = make_reading(t, TEMP_MIN, TEMP_MAX);
+    data.humedad     = make_reading(h, HUM_MIN, HUM_MAX);
     return data;
 }

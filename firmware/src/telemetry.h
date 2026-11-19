@@ -13,8 +13,8 @@ void telemetry_init();
 void telemetry_run();
 
 /**
- * @brief Publica las lecturas de los 3 sensores hacia la nube Nodrix.
- * @param data Estructura con lecturas de temperatura, humedad e iluminación.
+ * @brief Publica las lecturas de los 2 sensores hacia la nube Nodrix.
+ * @param data Estructura con lecturas de temperatura y humedad.
  * @return true si la solicitud fue encolada/enviada correctamente.
  */
 bool telemetry_publish(const SensorData& data);

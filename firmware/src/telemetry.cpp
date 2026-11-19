@@ -140,13 +140,6 @@ bool telemetry_publish(const SensorData& data) {
         Serial.println(F("[Telemetria] Alerta: Lectura de 'humedad' invalida, canal omitido."));
     }
 
-    if (data.iluminacion.valid) {
-        Nodrix.send("iluminacion", round2(data.iluminacion.value));
-        staged_count++;
-    } else {
-        Serial.println(F("[Telemetria] Alerta: Lectura de 'iluminacion' invalida, canal omitido."));
-    }
-
     if (staged_count == 0) {
         Serial.println(F("[Telemetria] Error: Ningun canal valido en este ciclo; envio cancelado."));
         return false;

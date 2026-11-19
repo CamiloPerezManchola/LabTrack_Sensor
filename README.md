@@ -1,159 +1,131 @@
-# Sensorica Blueprint
+# Monitoreo ambiental de laboratorios
 
-Arquitectura integral **sensado → digitalización → aplicación**, construida y simulada de punta a punta (Wokwi + PlatformIO) conectada en tiempo real a una plataforma IoT en Cloudflare (**Nodrix**).
+Prototipo IoT de bajo costo que mide **temperatura** y **humedad relativa** de un laboratorio y envía los datos a un panel en línea mediante una conexión **cifrada (TLS) con verificación del certificado del servidor**.
 
----
+Proyecto de la asignatura Sensórica, Universidad Surcolombiana. Autor: Camilo Andrés Pérez Manchola (19 de noviembre de 2026).
+
+## Motivación
+
+En la universidad, la revisión de las condiciones de un laboratorio depende de una persona y se hace de forma manual, puntual y subjetiva. No existe un registro histórico de temperatura ni de humedad.
+
+Este prototipo **no reemplaza** el criterio del profesor ni del personal del laboratorio: aporta datos objetivos y continuos que respaldan la revisión manual.
 
 ## Arquitectura
 
-```mermaid
-flowchart LR
-  subgraph E1["Etapa 1 · Sensado (Simulado)"]
-    P1["Pot 1 → CH0 (GPIO34)"]
-    P2["Pot 2 → CH1 (GPIO35)"]
-    P3["Pot 3 → CH2 (GPIO32)"]
-  end
-  subgraph E2["Etapa 2 · Digitalización (ESP32)"]
-    ADC["ADC1 12-bit<br/>Escalado directo"]
-    NET["WiFi + Cliente Nodrix"]
-  end
-  subgraph E3["Etapa 3 · Aplicación (Cloudflare)"]
-    API["nodrix /v1/telemetry"]
-    DB[("D1 / Durable Objects")]
-    DASH["Dashboard en tiempo real"]
-    MCP["nodrix MCP /v1/mcp"]
-  end
-  P1 & P2 & P3 --> ADC --> NET -->|"POST JSON"| API --> DB --> DASH
-  DB --> MCP
+```
+DHT22  →  ESP32  →  Wi-Fi + TLS (WebSocket)  →  Nodrix en Cloudflare  →  Panel en tiempo real
 ```
 
----
+- **Nodo de sensado:** ESP32-DevKitC (ESP32-WROOM-32) + sensor DHT22.
+- **Nube y panel:** [Nodrix](https://github.com/decoded-cipher/nodrix) (código abierto, licencia MIT) desplegado en una cuenta propia de Cloudflare. Registra las variables `temperatura` y `humedad` automáticamente con el primer envío.
+- **Firmware:** parte de [sensorica_blueprint](https://github.com/oscar88leonardo/sensorica_blueprint), adaptado a hardware real y a los dos canales del proyecto.
 
-## Estructura del Repositorio
+## Hardware
 
-```
-sensorica_blueprint/
-├── firmware/                  # Proyecto PlatformIO (Firmware ESP32)
-│   ├── platformio.ini         # Configuración del entorno esp32dev y librerías
-│   ├── wokwi.toml             # Configuración de simulación Wokwi
-│   ├── diagram.json           # Circuito: ESP32 + 3 potenciómetros (ADC1)
-│   ├── include/
-│   │   ├── config.h           # Pines ADC1, periodos y rangos físicos
-│   │   └── secrets.h.example  # Plantilla de credenciales WiFi y Nodrix
-│   └── src/                   # Código fuente C++ (Etapas 1 y 2)
-├── dashboard/                 # Definición y exportación de widgets / dashboard
-├── docs/                      # Documentación de diseño, plan y pruebas
-│   └── plan.md                # Plan de implementación detallado
-└── README.md
-```
+| Componente | Detalle |
+|---|---|
+| Microcontrolador | ESP32-DevKitC (ESP32-WROOM-32) |
+| Sensor | DHT22 |
+| Alimentación del sensor | Desde la propia placa; tierra compartida |
+| Pin de datos | GPIO23 |
+| Conexión al computador | USB (programación, alimentación y salida serie) |
 
----
+## Estructura del firmware
 
-## Mapeo de Magnitudes Físicas
+| Archivo | Función |
+|---|---|
+| `config.h` | Pines, intervalo de publicación y rangos válidos de las lecturas |
+| `sensors.cpp` | Lectura del DHT22 y validación de cada valor |
+| `telemetry.cpp` | Conexión Wi-Fi, sincronización de hora, conexión a Nodrix y envío de datos |
+| `secrets.h` | Credenciales y certificados (**excluido del control de versiones**) |
+| `main.cpp` | Ciclo principal: lee y publica con la periodicidad configurada |
 
-| Canal | Pin (ADC1) | Variable | Unidad | Rango Físico |
-|---|---|---|---|---|
-| CH0 | GPIO34 | `temperatura` | °C | 0 – 100 |
-| CH1 | GPIO35 | `humedad` | % HR | 0 – 100 |
-| CH2 | GPIO32 | `iluminacion` | lx | 0 – 1000 |
+### Decisiones de diseño
 
-> **Nota:** Se utiliza exclusivamente **ADC1** (GPIO 32, 34, 35) ya que el ADC2 queda inhabilitado al operar la radio WiFi del ESP32.
+- **Intervalo de 12 segundos.** El DHT22 admite como mínimo una lectura cada 2 s; un intervalo mayor cuida la cuota de la capa gratuita de Cloudflare.
+- **Validación de lecturas.** Si el sensor devuelve un valor inválido se hace un único reintento; si persiste, ese canal se omite del envío para no mandar datos de relleno.
+- **Rangos válidos.** Se descartan valores fuera de −40 a 80 °C (temperatura) y de 0 a 100 % (humedad).
 
----
+## Requisitos
 
-## Documentación y Guías
+- [Visual Studio Code](https://code.visualstudio.com/) con la extensión [PlatformIO](https://platformio.org/)
+- Una instancia de Nodrix desplegada en tu cuenta de Cloudflare
+- Una red Wi-Fi de **2,4 GHz** sin portal cautivo ni autenticación por usuario
 
-- [Plan de implementación](docs/plan.md): Hitos, fases y arquitectura.
-- [Acondicionamiento y Sensores Reales](docs/acondicionamiento.md): Mapeo virtual, cálculo de funciones de transferencia y diseño de etapas analógicas (filtros RC, clamping, amplificadores de instrumentación y transimpedancia).
+### Versiones utilizadas
 
----
+| Componente | Versión |
+|---|---|
+| Plataforma Espressif 32 (PlatformIO) | 8.0.0 |
+| Framework Arduino para ESP32 | 3.3.12 |
+| Librería Nodrix | 0.1.2 |
+| ArduinoJson | 7.4.3 |
+| DHT sensor library (Adafruit) | 1.4.7 |
+| Adafruit Unified Sensor | 1.1.15 |
 
-## Cómo Reproducir el Proyecto desde GitHub
+## Puesta en marcha
 
-### Requisitos Previos
+1. Clona el repositorio y ábrelo con PlatformIO.
+2. Crea el archivo `secrets.h` con tus credenciales Wi-Fi, los datos de tu instancia de Nodrix (incluido el token del proyecto) y los certificados raíz. **No lo subas al repositorio**: verifica que esté en `.gitignore`.
+3. Conecta el DHT22 al GPIO23 del ESP32, con alimentación y tierra de la placa.
+4. Compila y carga el firmware por USB.
+5. Abre el monitor serie para ver las lecturas y revisa el panel de Nodrix: las variables aparecerán tras el primer envío.
 
-- **Git** y **PlatformIO** (extensión **PlatformIO IDE** o CLI `pio`).
-- Extensión **Wokwi Simulator** instalada en el IDE y con licencia activa (`F1` → `Wokwi: Request a New License`).
-- Una instancia de **[Nodrix](https://nodrix.live)** desplegada en **Cloudflare Workers** (el plan gratuito es suficiente) con un proyecto creado y su respectivo **Project Token**.
+## Seguridad
 
-### 1. Clonar el repositorio
+La primera versión cifraba el tráfico sin verificar el servidor. Para corregirlo:
 
-```bash
-git clone https://github.com/oscar88leonardo/sensorica_blueprint.git
-cd sensorica_blueprint
-```
+- Se fijaron en el firmware los certificados raíz **ISRG Root X2** e **ISRG Root X1** (Let's Encrypt), que corresponden a la cadena del servidor del proyecto.
+- Se fija la **raíz** y no el certificado del servidor, porque este se renueva cada pocos meses y la raíz permanece estable.
+- El firmware **sincroniza la hora por NTP** antes de conectarse, porque validar un certificado requiere conocer la fecha.
 
-### 2. Configurar las credenciales (`secrets.h`)
+Así, el token del proyecto queda protegido frente a un atacante que se interponga en la red Wi-Fi.
 
-El archivo `secrets.h` está excluido de Git por seguridad. Créalo a partir de la plantilla incluida:
+## Selección tecnológica
 
-```bash
-cp firmware/include/secrets.h.example firmware/include/secrets.h
-```
+Se usaron matrices de selección ponderadas (puntajes de 1 a 5; total sobre 100).
 
-Edita `firmware/include/secrets.h` con los datos de tu entorno:
+| Componente | Elegido | Puntaje |
+|---|---|---|
+| Microcontrolador | ESP32-DevKitC | 91 / 100 |
+| Sensor | DHT22 | 86 / 100 |
+| Plataforma de datos | Nodrix | 88 / 100 |
 
-```cpp
-#define WIFI_SSID    "Wokwi-GUEST"                       // Red virtual de Wokwi (o tu WiFi real en ESP32 físico)
-#define WIFI_PASS    ""                                  // Sin contraseña en Wokwi-GUEST
-#define NODRIX_HOST  "tu-instancia.workers.dev"          // Host de tu Worker en Cloudflare (sin https:// ni /)
-#define NODRIX_TOKEN "pega_aqui_tu_project_token"        // Token del proyecto generado en Nodrix
+Alternativas evaluadas: ESP32-S3, ESP32-C3, Raspberry Pi Pico W y Arduino Uno R4 WiFi (microcontrolador); AHT20 y BME280 (sensor); Blynk y Node-RED local (plataforma).
 
-// (Opcional - Solo producción en hardware físico)
-// #define NODRIX_CA_CERT "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
-```
+## Pruebas y resultados
 
-> **Nota sobre Seguridad TLS (`NODRIX_CA_CERT` vs `setInsecure`):**
-> - **En simulación (Wokwi) y prototipado:** Si `NODRIX_CA_CERT` no está definido, el firmware invoca `Nodrix.setInsecure()`. El tráfico sigue viajando **cifrado mediante TLS**, pero se omite la verificación de la cadena X.509 de la Autoridad Certificadora (CA). Esto evita fallos por falta de sincronización de reloj NTP al arranque (`1970-01-01`), reduce la carga de cómputo en el simulador y tolera la rotación automática de certificados de borde en Cloudflare.
-> - **En producción (ESP32 físico):** Para proteger el `NODRIX_TOKEN` frente a ataques *Man-in-the-Middle (MITM)* en redes WiFi reales, define `NODRIX_CA_CERT` en `secrets.h` con el certificado PEM de la Root CA que firma tu dominio en Cloudflare (por ejemplo, `ISRG Root X1` o `GTS Root R1`, consultable con `openssl s_client -showcerts -connect <tu-instancia>.workers.dev:443 </dev/null`). Al detectarlo, [`telemetry_init()`](firmware/src/telemetry.cpp) activará automáticamente `Nodrix.setCACert(NODRIX_CA_CERT)`.
+- **Lectura base:** ~29,7 °C y ~82 % HR, coherentes con un día de lluvia reciente.
+- **Exhalar sobre el sensor:** la humedad subió de ~82 % a 100 % en pocas lecturas y volvió a ~82 % en unos 40 s; la temperatura subió hasta 30,0 °C.
+- **Objeto congelado y soplar contra él:** la temperatura bajó de 29,9 a 28,4 °C; la humedad subió a ~85 % y llegó a ~96 % con una nueva exhalación.
+- **Lecturas inválidas intermitentes** tras las perturbaciones (causa probable: condensación sobre el sensor e intervalo de 2 s, en el límite del DHT22). Se resolvió con el intervalo de 12 s, el reintento y la omisión del canal.
+- **Panel:** las variables se registraron automáticamente y respondieron a las perturbaciones.
+- **TLS verificado:** tras fijar los certificados raíz, el nodo se conectó con verificación del servidor y los datos siguieron llegando al panel.
 
-*(Opcional)* En [`firmware/include/config.h`](firmware/include/config.h) puedes ajustar `TELEMETRY_INTERVAL_MS` según tu caso de uso (por ejemplo `1000` ms para pruebas cortas interactivas o `10000` ms para operación continua cuidando la cuota gratuita de Cloudflare).
+## Limitaciones
 
-### 3. Compilar el firmware
+- **Sin validación metrológica:** no se comparó con un instrumento de referencia; la precisión absoluta, incluido el nivel de humedad base observado, está por determinar.
+- **Certificados:** la fijación funciona mientras Cloudflare emita sus certificados desde esas autoridades; si cambiara, habría que actualizar el firmware.
+- **Red:** el ESP32 solo usa Wi-Fi de 2,4 GHz y no funciona con portal cautivo o autenticación por usuario, lo que puede condicionar la instalación en la red de la universidad.
+- **Alcance:** solo temperatura y humedad.
+- **Madurez de Nodrix:** su primera versión estable se publicó en junio de 2026.
 
-Dado que la carpeta `.pio/` no se versiona en el repositorio, es indispensable compilar antes de iniciar el simulador para generar `.pio/build/esp32dev/firmware.bin` y `firmware.elf` (referenciados en [`firmware/wokwi.toml`](firmware/wokwi.toml)):
+## Trabajo futuro
 
-```bash
-pio run -d firmware
-```
+- Comparar el prototipo con un instrumento de referencia.
+- Operación prolongada en el laboratorio.
+- Ampliar a luminancia, ruido y disponibilidad del espacio.
 
-*(También puedes usar el botón **PlatformIO: Build** desde el IDE abriendo el directorio `firmware`).*
+## Referencias
 
-### 4. Iniciar la simulación en Wokwi
+1. *Prototipo IoT para el monitoreo de temperatura, humedad y ruido en laboratorios de calibración.* Populer. <https://journal.unimar-amni.ac.id/index.php/Populer/article/view/5572>
+2. *IoT-Based Classroom Temperature Monitoring and Missing Data Prediction Using Raspberry Pi and ESP32.* Journal of Robotics and Control, 6(1), 2025. DOI: 10.18196/jrc.v6i1.24345
+3. Azmee, N. A., Roslan, H. y Sari, S. (2025). *Real-Time IoT-Based Lecture Room Occupancy and Indoor Air Quality Monitoring System.* UTHM. <https://periodical.uthm.edu.my/index.php/peat/article/view/21265>
+4. Hernández, W. y Cañas, N. (2024). *Sensing Classroom Temperature, Relative Humidity, Illuminance, CO2, and Noise…* Sensors, 24(16). DOI: 10.3390/s24165129
+5. Rocha Ribeiro, R., Bauer, E. y Lameiras, R. (2021). *Higroterm: An open-source and low-cost temperature and humidity monitoring system for laboratory applications.* Inventions, 6(4), 84.
+6. Nodrix: <https://github.com/decoded-cipher/nodrix> · Documentación: <https://nodrix.live/docs>
+7. sensorica_blueprint: <https://github.com/oscar88leonardo/sensorica_blueprint>
 
-1. Abre [`firmware/diagram.json`](firmware/diagram.json) en el IDE.
-2. Presiona el botón **Play** de Wokwi (o ejecuta `F1` → `Wokwi: Start Simulator`).
-3. Comprueba en el Monitor Serie la conexión a `Wokwi-GUEST` y las confirmaciones `HTTP 204` (`TLS Keep-Alive reutilizado`) al mover los 3 potenciómetros.
+## Licencia
 
-> **Recomendación de rendimiento:** En equipos con 8 GB de RAM o menos, se recomienda mantener el navegador cerrado en el PC (dejando visible la pestaña de Wokwi en primer plano) y visualizar el dashboard en tiempo real desde otro dispositivo (celular o tablet) para evitar *throttling* del simulador y saturación de memoria.
-
-### 5. Configurar o visualizar el Dashboard en Nodrix
-
-- Con el primer envío exitoso desde Wokwi, las variables `temperatura`, `humedad` e `iluminacion` se registran automáticamente en tu proyecto de Nodrix.
-- Puedes armar los widgets desde la interfaz web de Nodrix tomando como referencia [`dashboard/README.md`](dashboard/README.md) y la definición exportada en [`dashboard/monitoreo_sensores.json`](dashboard/monitoreo_sensores.json) (o automatizarlo conectando el servidor **Nodrix MCP** en `/v1/mcp`).
-
----
-
-## Simulación en Wokwi (Etapas 1 y 2)
-
-1. Abre el archivo [`firmware/diagram.json`](firmware/diagram.json) en el IDE.
-2. Inicia la simulación presionando el botón de **Play** de la extensión de Wokwi (o comando `Wokwi: Start Simulator`).
-3. El firmware cargará automáticamente el binario compilado en `.pio/build/esp32dev/firmware.bin`.
-4. El ESP32 se conecta a la red `Wokwi-GUEST` y a la instancia de Nodrix en Cloudflare mediante una sesión `HTTPS Keep-Alive` persistente.
-5. En cada ciclo (`TELEMETRY_INTERVAL_MS`), el firmware lee los 3 potenciómetros y envía el lote de métricas (`temperatura`, `humedad`, `iluminacion`) hacia `POST /v1/telemetry`, confirmando con respuesta HTTP `204`.
-
----
-
-## Dashboard en Tiempo Real (Etapa 3)
-
-El dashboard fue generado a través del servidor Nodrix MCP:
-- **Nombre:** Monitoreo de Sensores
-- **ID:** `dsh_9oOUFs5IEnsH`
-- **Widgets configurados:**
-  - 3 × Tarjetas de valor numérico con unidades (`°C`, `% HR`, `lx`).
-  - 3 × Diales analógicos (*gauges*) con rangos nominales.
-  - 1 × Gráfico temporal de 3 series con ventana de 1 hora y zoom interactivo.
-- Exportación local: [`dashboard/monitoreo_sensores.json`](dashboard/monitoreo_sensores.json).
-
-- **Acceso Publico:** https://nodrixapp.oscar88leonardo-351.workers.dev/share/zbEBe-cFM4Vb
-
+[Completar: elige una licencia para el repositorio, por ejemplo MIT.]
